@@ -1,4 +1,4 @@
-# Рабочее место TNov на новой машине: клонирует недостающие репозитории рядом с TNovDeploy,
+﻿# Рабочее место TNov на новой машине: клонирует недостающие репозитории рядом с TNovDeploy,
 # собирает TNovDeploy (автодеплой после сборки TNov) и TNovReleaser (проверка совместимости
 # TNovCommon и выпуск), создаёт папку локальной сборки TNovBuild.
 #   powershell -ExecutionPolicy Bypass -File Setup-Workspace.ps1
