@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TNovDeploy</RootNamespace>
+    <!-- Конфигурации решения TNov: деплоер собирается вместе с плагином. -->
+    <Configurations>R2022;R2027;Release</Configurations>
+    <!-- Стабильный путь вывода, не зависящий от конфигурации/TFM,
+         чтобы автодеплой из TNov всегда находил exe. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>bin\deploy\</OutputPath>
+  </PropertyGroup>
+
+</Project>

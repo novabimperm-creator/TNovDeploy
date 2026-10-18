@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Общие настройки сборки для всех проектов плагина TNov.
+  Подключается из Directory.Build.props каждого проекта: ..\TNovDeploy\TNov.Build.props
+  (все репозитории клонируются рядом в одну папку, например C:\DEV).
+
+  Сборка идёт локально: $(TNovRoot)TNovBuild\<год>\ (TNovRoot — общая папка репозиториев).
+  Оттуда TNovDeploy ставит плагин в Revit на этой машине, а TNovReleaser выпускает.
+  Папку можно переопределить свойством или переменной окружения TNovBuildRoot.
+
+  Две конфигурации:
+    R2022 -> Revit 2022, .NET Framework 4.8
+    R2027 -> Revit 2027, .NET 10 (windows)
+
+  Revit API подключается пакетом Revit_All_Main_Versions_API_x64
+  (RevitAPI/RevitAPIUI/AdWindows и пр. приходят из него, локальные ссылки не нужны).
+-->
+<Project>
+
+  <PropertyGroup>
+    <Configurations>R2022;R2027</Configurations>
+    <Platforms>AnyCPU</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Configuration Condition=" '$(Configuration)' == '' ">R2022</Configuration>
+    <TNovRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\'))</TNovRoot>
+    <TNovBuildRoot Condition=" '$(TNovBuildRoot)' == '' ">$(TNovRoot)TNovBuild\</TNovBuildRoot>
+  </PropertyGroup>
+
+  <!-- Общие свойства для всех конфигураций -->
+  <PropertyGroup>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Deterministic>false</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <!-- Атрибуты сборки — в Properties\AssemblyInfo.cs модуля, версия — в obj\ (TNovGenerateVersionInfo ниже). -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <!-- SDK-библиотеки по умолчанию НЕ копируют NuGet-зависимости в output.
+         Плагину нужны все DLL рядом в папке сборки/деплоя, поэтому включаем копирование.
+         Runtime-ассеты Revit API при этом не копируются (IncludeAssets="build;compile"). -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- SDK-style: бинарные .resx (картинки в Resources.resx) требуют preserialized-формат
+         и System.Resources.Extensions.dll рядом с плагином — и на net48, и на net10. -->
+    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+    <!-- В решении есть файлы app.config с legacy binding redirects,
+         которые для библиотек Revit не применяются. Не подхватываем их автоматически. -->
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+  </PropertyGroup>
+
+  <!-- ===== Revit 2022 / .NET Framework 4.8 ===== -->
+  <PropertyGroup Condition="'$(Configuration)' == 'R2022'">
+    <TargetFramework>net48</TargetFramework>
+    <OutputPath>$(TNovBuildRoot)2022\</OutputPath>
+    <DefineConstants>$(DefineConstants);TRACE;R2022;REVIT2022</DefineConstants>
+    <Optimize>true</Optimize>
+    <RevitVersion>2022</RevitVersion>
+  </PropertyGroup>
+
+  <!-- ===== Revit 2027 / .NET 10 ===== -->
+  <PropertyGroup Condition="'$(Configuration)' == 'R2027'">
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputPath>$(TNovBuildRoot)2027\</OutputPath>
+    <DefineConstants>$(DefineConstants);TRACE;R2027;REVIT2027</DefineConstants>
+    <Optimize>true</Optimize>
+    <RevitVersion>2027</RevitVersion>
+  </PropertyGroup>
+
+  <!-- ===== Revit API (через NuGet, только для компиляции) ===== -->
+  <ItemGroup>
+    <PackageReference Include="Revit_All_Main_Versions_API_x64"
+                      Version="$(RevitVersion).*"
+                      IncludeAssets="build; compile" />
+  </ItemGroup>
+
+  <!-- Preserialized .resx вшивают ссылку на System.Resources.Extensions 4.0.0.0.
+       Пакет 8.x имеет AssemblyVersion 8.0.0.0 — Revit не подхватывает без binding redirect.
+       4.6.0 совместим с 4.0.0.0 (см. dotnet/runtime#39078). -->
+  <ItemGroup>
+    <PackageReference Include="System.Resources.Extensions" Version="4.6.0" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <!-- Явно копируем DLL в output — и для net48, и для net10. -->
+  <ItemGroup>
+    <None Include="$(PkgSystem_Resources_Extensions)\lib\netstandard2.0\System.Resources.Extensions.dll"
+          Link="System.Resources.Extensions.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false"
+          Condition="Exists('$(PkgSystem_Resources_Extensions)\lib\netstandard2.0\System.Resources.Extensions.dll')" />
+    <None Include="$(PkgSystem_Resources_Extensions)\lib\net462\System.Resources.Extensions.dll"
+          Link="System.Resources.Extensions.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false"
+          Condition="!Exists('$(PkgSystem_Resources_Extensions)\lib\netstandard2.0\System.Resources.Extensions.dll') And Exists('$(PkgSystem_Resources_Extensions)\lib\net462\System.Resources.Extensions.dll')" />
+  </ItemGroup>
+
+  <!-- ===== Системные сборки только для .NET Framework 4.8 =====
+       На .NET 10 WPF/WinForms/Drawing приходят из UseWPF/UseWindowsForms,
+       остальное — из runtime, поэтому этот блок только для net48. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+  <!-- ===== Версия сборки =====
+       N.гг.ММдд.минуты-от-полуночи, N — TNovMajorVersion из .csproj модуля (TNov — 5).
+       Файл пишется в obj\ при каждой сборке и в репозиторий не попадает: раньше
+       Properties\VersionInfo.cs менялся каждой сборкой и конфликтовал между машинами. -->
+  <Target Name="TNovGenerateVersionInfo" BeforeTargets="BeforeCompile" Condition="'$(TNovMajorVersion)' != ''">
+    <PropertyGroup>
+      <_TNovMinutes>$([MSBuild]::Add($([MSBuild]::Multiply($([System.DateTime]::Now.Hour), 60)), $([System.DateTime]::Now.Minute)))</_TNovMinutes>
+      <TNovVersion>$(TNovMajorVersion).$([System.DateTime]::Now.ToString('yy')).$([System.DateTime]::Now.ToString('MMdd')).$(_TNovMinutes)</TNovVersion>
+      <TNovVersionInfoFile>$(IntermediateOutputPath)TNovVersionInfo.g.cs</TNovVersionInfoFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(TNovVersionInfoFile)"
+                      Lines="using System.Reflection%3B;[assembly: AssemblyVersion(&quot;$(TNovVersion)&quot;)];[assembly: AssemblyFileVersion(&quot;$(TNovVersion)&quot;)]"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(TNovVersionInfoFile)" />
+      <FileWrites Include="$(TNovVersionInfoFile)" />
+    </ItemGroup>
+  </Target>
+
+</Project>
