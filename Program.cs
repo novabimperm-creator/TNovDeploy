@@ -97,7 +97,9 @@ if (!File.Exists(Path.Combine(addinsRoot, "TNov.addin")))
     Console.WriteLine($"\nВнимание: нет {Path.Combine(addinsRoot, "TNov.addin")} — Revit не загрузит плагин. " +
                       "Установите TNovClient (он ставит .addin) или скопируйте файл вручную.");
 
-StartRevit(year);
+// Revit 2027 пока не запускаем.
+if (year == "2022")
+    StartRevit(year);
 
 Console.WriteLine("\nДля продолжения нажмите любую клавишу...");
 Console.ReadKey();
