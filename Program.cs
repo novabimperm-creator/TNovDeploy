@@ -15,15 +15,15 @@ string addinsDir = Path.Combine(addinsRoot, "TNov");
 
 Console.WriteLine($"\nкопирование файлов {year} из {folderPath} в {addinsDir}\n");
 
-// Сборки TNov — всегда (кроме совпадающих), чтобы новые dll (например TNovApi.Client.dll)
-// не оставались старыми. Сторонние зависимости — только если их ещё нет: их версии
-// задаёт выпуск (TNovClient), локальная сборка не должна их подменять.
+// Только сборки TNov (все, чтобы новые dll вроде TNovApi.Client.dll не оставались старыми).
+// Сторонние зависимости ставит TNovClient из выпуска: в папке сборки их много лишних
+// (транзитивные пакеты NuGet), в Revit они не нужны.
+RemoveStrayDependencies(folderPath, addinsDir, year);
+
 List<string> filesToCopy = new();
 try
 {
-    filesToCopy = Directory.GetFiles(folderPath, "*.dll")
-        .Where(path => Path.GetFileName(path).StartsWith("TNov", StringComparison.OrdinalIgnoreCase)
-                       || !File.Exists(Path.Combine(addinsDir, Path.GetFileName(path))))
+    filesToCopy = Directory.GetFiles(folderPath, "TNov*.dll")
         .Where(path => FilesDiffer(path, Path.Combine(addinsDir, Path.GetFileName(path))))
         .Select(Path.GetFileName)
         .OfType<string>()
@@ -106,6 +106,65 @@ static string BuildRoot()
     }
 
     throw new DirectoryNotFoundException("Не найден TNov.Build.props над " + AppContext.BaseDirectory);
+}
+
+// Прежняя версия TNovDeploy копировала в папку Revit все сторонние dll из сборки, которых там
+// не было. Убираем из папки плагина dll, которые есть в сборке, но не входят в выпуск
+// (корпоративный манифест): так удаляются только скопированные деплоем, а не поставленные клиентом.
+static void RemoveStrayDependencies(string buildDir, string addinsDir, string year)
+{
+    if (!Directory.Exists(addinsDir) || !Directory.Exists(buildDir))
+        return;
+
+    HashSet<string> released;
+    try
+    {
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("TNovDeploy");
+        using var manifest = System.Text.Json.JsonDocument.Parse(
+            http.GetStringAsync("https://novabimperm-creator.github.io/TNovDist/corp/manifest.json").GetAwaiter().GetResult());
+        string prefix = year + "/TNov/";
+        released = manifest.RootElement.GetProperty("files").EnumerateArray()
+            .Select(file => file.GetProperty("path").GetString() ?? "")
+            .Where(path => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(path => path.Substring(prefix.Length))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+    catch (Exception e)
+    {
+        // Без манифеста не знаем, что входит в выпуск, — ничего не удаляем.
+        Console.WriteLine($"Лишние зависимости не проверены (манифест недоступен: {e.Message})\n");
+        return;
+    }
+
+    if (released.Count == 0)
+        return;
+
+    var stray = Directory.GetFiles(addinsDir, "*.dll")
+        .Select(Path.GetFileName)
+        .OfType<string>()
+        .Where(name => !name.StartsWith("TNov", StringComparison.OrdinalIgnoreCase)
+                       && !released.Contains(name)
+                       && File.Exists(Path.Combine(buildDir, name)))
+        .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+    if (stray.Count == 0)
+        return;
+
+    Console.WriteLine("удаление зависимостей, которых нет в выпуске:");
+    foreach (string name in stray)
+    {
+        try
+        {
+            File.Delete(Path.Combine(addinsDir, name));
+            Console.WriteLine("  " + name);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"  {name}: не удалён ({e.Message}) — закройте Revit и запустите деплой ещё раз");
+        }
+    }
+    Console.WriteLine();
 }
 
 static bool FilesDiffer(string source, string target)
