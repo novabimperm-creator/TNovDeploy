@@ -13,6 +13,15 @@ string addinsRoot = Path.Combine(
     "Autodesk", "Revit", "Addins", year);
 string addinsDir = Path.Combine(addinsRoot, "TNov");
 
+// Открытый Revit держит dll плагина — ждём, пока его закроют.
+while (IsRevitRunning(year))
+{
+    Console.WriteLine($"Revit {year} открыт.");
+    Console.WriteLine("Закройте Revit и нажмите любую клавишу, чтобы повторить...");
+    Console.ReadKey(true);
+    Console.WriteLine();
+}
+
 Console.WriteLine($"\nкопирование файлов {year} из {folderPath} в {addinsDir}\n");
 
 // Только сборки TNov (все, чтобы новые dll вроде TNovApi.Client.dll не оставались старыми).
@@ -88,8 +97,57 @@ if (!File.Exists(Path.Combine(addinsRoot, "TNov.addin")))
     Console.WriteLine($"\nВнимание: нет {Path.Combine(addinsRoot, "TNov.addin")} — Revit не загрузит плагин. " +
                       "Установите TNovClient (он ставит .addin) или скопируйте файл вручную.");
 
+StartRevit(year);
+
 Console.WriteLine("\nДля продолжения нажмите любую клавишу...");
 Console.ReadKey();
+
+// Revit нужной версии ищем по пути exe (C:\Program Files\Autodesk\Revit 2022\Revit.exe).
+// Если путь не прочитать (например, Revit запущен от администратора), считаем, что это он.
+static bool IsRevitRunning(string year)
+{
+    foreach (Process process in Process.GetProcessesByName("Revit"))
+    {
+        using (process)
+        {
+            string? path;
+            try
+            {
+                path = process.MainModule?.FileName;
+            }
+            catch
+            {
+                return true;
+            }
+
+            if (path == null || path.Contains("Revit " + year, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+    }
+    return false;
+}
+
+static void StartRevit(string year)
+{
+    string revitExe = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+        "Autodesk", "Revit " + year, "Revit.exe");
+    if (!File.Exists(revitExe))
+    {
+        Console.WriteLine($"\nRevit {year} не запущен: нет {revitExe}");
+        return;
+    }
+
+    try
+    {
+        Process.Start(new ProcessStartInfo(revitExe) { UseShellExecute = true });
+        Console.WriteLine($"\nзапуск Revit {year}");
+    }
+    catch (Exception e)
+    {
+        Console.WriteLine($"\nRevit {year} не запущен: {e.Message}");
+    }
+}
 
 // Папка сборки: %TNovBuildRoot% или TNovBuild рядом с репозиториями. Корень репозиториев
 // ищем вверх от exe по TNov.Build.props (exe лежит в TNovDeploy\bin\deploy).
