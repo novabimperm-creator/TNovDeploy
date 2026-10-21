@@ -97,9 +97,9 @@ if (!File.Exists(Path.Combine(addinsRoot, "TNov.addin")))
     Console.WriteLine($"\nВнимание: нет {Path.Combine(addinsRoot, "TNov.addin")} — Revit не загрузит плагин. " +
                       "Установите TNovClient (он ставит .addin) или скопируйте файл вручную.");
 
-// Revit 2027 пока не запускаем.
-if (year == "2022")
-    StartRevit(year);
+// Revit 2027 пока не запускаем. Если Revit запущен, ждать клавишу незачем — сразу выходим.
+if (year == "2022" && StartRevit(year))
+    return;
 
 Console.WriteLine("\nДля продолжения нажмите любую клавишу...");
 Console.ReadKey();
@@ -129,7 +129,7 @@ static bool IsRevitRunning(string year)
     return false;
 }
 
-static void StartRevit(string year)
+static bool StartRevit(string year)
 {
     string revitExe = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
@@ -137,17 +137,19 @@ static void StartRevit(string year)
     if (!File.Exists(revitExe))
     {
         Console.WriteLine($"\nRevit {year} не запущен: нет {revitExe}");
-        return;
+        return false;
     }
 
     try
     {
         Process.Start(new ProcessStartInfo(revitExe) { UseShellExecute = true });
         Console.WriteLine($"\nзапуск Revit {year}");
+        return true;
     }
     catch (Exception e)
     {
         Console.WriteLine($"\nRevit {year} не запущен: {e.Message}");
+        return false;
     }
 }
 
